@@ -557,3 +557,341 @@ Assessment ID: ${assessmentData.id}
                 return (
                   <div key={cat.id} className="p-4 border rounded-lg bg-gray-50">
                     <h4 className="font-semibold text-gray-800">{cat.title}</h4>
+                    <div className="mt-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm text-gray-600">Score</span>
+                        <span className="font-bold" style={{ color: maturityInfo.color }}>
+                          {cat.score.toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="h-2 rounded-full transition-all duration-500"
+                          style={{ 
+                            width: `${(cat.score / 5) * 100}%`,
+                            backgroundColor: maturityInfo.color 
+                          }}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{maturityInfo.name}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex gap-4 justify-center bg-white p-6 rounded-lg shadow-sm">
+            <button 
+              onClick={() => setView('form')} 
+              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
+            >
+              ← Back to Assessment
+            </button>
+            <button 
+              onClick={exportToCSV} 
+              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
+            >
+              📊 Export Data
+            </button>
+          </div>
+        </div>
+      )}
+
+      {view === 'result' && submitted && (
+        <div className="bg-white p-8 rounded-lg shadow-sm">
+          <h3 className="text-2xl font-bold mb-6 text-gray-900">Assessment Complete! 🎉</h3>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="p-6 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-gray-800 mb-2">Overall Results</h4>
+              <div className="text-3xl font-bold mb-2" style={{ color: maturity.color }}>
+                {scores.overall} / 5.0
+              </div>
+              <div className="text-lg font-medium text-gray-700">{maturity.name} Level</div>
+              <div className="text-sm text-gray-600 mt-1">{maturity.description}</div>
+            </div>
+            
+            <div className="p-6 bg-gray-50 rounded-lg">
+              <h4 className="font-semibold text-gray-800 mb-2">Assessment Details</h4>
+              <div className="space-y-1 text-sm">
+                <div><strong>Organisation:</strong> {metadata.organisation || 'Not specified'}</div>
+                <div><strong>Contact:</strong> {metadata.contact || 'Not specified'}</div>
+                <div><strong>Date:</strong> {metadata.date}</div>
+                <div><strong>Assessment ID:</strong> {submitted.id}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6">
+            <h4 className="font-semibold text-blue-800 mb-2">Shareable Report Link</h4>
+            <div className="flex items-center gap-2">
+              <input 
+                type="text" 
+                value={submitted.shareLink} 
+                readOnly 
+                className="flex-1 p-2 border border-blue-300 rounded bg-white text-sm"
+              />
+              <button 
+                onClick={() => navigator.clipboard.writeText(submitted.shareLink)}
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
+              >
+                Copy
+              </button>
+            </div>
+          </div>
+
+          {/* Submission Status */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="p-4 bg-gray-50 border rounded-lg">
+              <h4 className="font-semibold text-gray-800 mb-2">📁 GitHub Backup</h4>
+              <div className="flex items-center gap-2">
+                {submissionStatus.github === 'pending' && (
+                  <>
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm text-blue-600">Backing up to repository...</span>
+                  </>
+                )}
+                {submissionStatus.github === 'success' && (
+                  <>
+                    <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                    <span className="text-sm text-green-600">Successfully backed up to GitHub</span>
+                  </>
+                )}
+                {submissionStatus.github === 'failed' && (
+                  <>
+                    <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                    <span className="text-sm text-red-600">GitHub backup failed</span>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-gray-50 border rounded-lg">
+              <h4 className="font-semibold text-gray-800 mb-2">📧 Email Report</h4>
+              <div className="flex items-center gap-2">
+                {submissionStatus.email === 'pending' && (
+                  <>
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm text-blue-600">Sending to florian.liepe@eraneos.com...</span>
+                  </>
+                )}
+                {submissionStatus.email === 'success' && (
+                  <>
+                    <div className="w-4 h-4 bg-green-500 rounded-full"></div>
+                    <span className="text-sm text-green-600">Email sent successfully</span>
+                  </>
+                )}
+                {submissionStatus.email === 'failed' && (
+                  <>
+                    <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+                    <span className="text-sm text-red-600">Email sending failed</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-4 justify-center">
+            <button 
+              onClick={exportToCSV} 
+              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
+            >
+              📊 Download Report (CSV)
+            </button>
+            <button 
+              onClick={() => setView('dashboard')} 
+              className="px-6 py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90" 
+              style={{ backgroundColor: '#ff7a00' }}
+            >
+              📈 View Dashboard
+            </button>
+            <button 
+              onClick={() => setView('form')} 
+              className="px-6 py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90" 
+              style={{ backgroundColor: '#0b6b9a' }}
+            >
+              🔄 New Assessment
+            </button>
+          </div>
+        </div>
+      )}
+
+      {view === 'report' && reportData && (
+        <div className="space-y-6">
+          {/* Report Header */}
+          <div className="bg-white p-8 rounded-lg shadow-sm">
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">AI Maturity Assessment Report</h2>
+              <p className="text-gray-600">Generated on {new Date(reportData.timestamp).toLocaleDateString()}</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Organisation</h3>
+                <p className="text-lg">{reportData.metadata.organisation || 'Anonymous'}</p>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Overall Score</h3>
+                <p className="text-3xl font-bold" style={{ color: reportData.maturity.color }}>
+                  {reportData.scores.overall}/5.0
+                </p>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Maturity Level</h3>
+                <p className="text-lg font-semibold" style={{ color: reportData.maturity.color }}>
+                  {reportData.maturity.name}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Report Charts */}
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h3 className="text-2xl font-bold mb-6 text-gray-900">Assessment Visualization</h3>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h4 className="text-lg font-semibold mb-4 text-gray-800">Maturity Radar Chart</h4>
+                <div className="h-80">
+                  <Radar 
+                    data={{
+                      labels: reportData.scores.categories.map(c => c.title.replace(' & ', '\n& ')),
+                      datasets: [
+                        {
+                          label: 'Current Maturity',
+                          data: reportData.scores.categories.map(c => c.score),
+                          backgroundColor: 'rgba(11, 107, 154, 0.15)',
+                          borderColor: '#0b6b9a',
+                          borderWidth: 3,
+                          pointBackgroundColor: '#ff7a00',
+                          pointBorderColor: '#ff7a00',
+                          pointRadius: 6,
+                          pointHoverRadius: 8,
+                        },
+                        {
+                          label: 'Target (Level 4)',
+                          data: new Array(6).fill(4),
+                          backgroundColor: 'rgba(255, 122, 0, 0.1)',
+                          borderColor: '#ff7a00',
+                          borderWidth: 2,
+                          borderDash: [5, 5],
+                          pointBackgroundColor: 'transparent',
+                          pointBorderColor: 'transparent',
+                          pointRadius: 0,
+                        },
+                      ],
+                    }}
+                    options={radarOptions}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h4 className="text-lg font-semibold mb-4 text-gray-800">Category Scores</h4>
+                <div className="h-80">
+                  <Bar 
+                    data={{
+                      labels: reportData.scores.categories.map(c => c.title.split(' ')[0]),
+                      datasets: [
+                        {
+                          label: 'Current Score',
+                          data: reportData.scores.categories.map(c => c.score),
+                          backgroundColor: reportData.scores.categories.map(c => {
+                            const level = Math.round(c.score) - 1;
+                            return MATURITY_LEVELS[Math.max(0, Math.min(4, level))].color + '80';
+                          }),
+                          borderColor: reportData.scores.categories.map(c => {
+                            const level = Math.round(c.score) - 1;
+                            return MATURITY_LEVELS[Math.max(0, Math.min(4, level))].color;
+                          }),
+                          borderWidth: 2,
+                          borderRadius: 4,
+                        },
+                      ],
+                    }}
+                    options={barOptions}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Analysis */}
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">Detailed Category Analysis</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {reportData.scores.categories.map(cat => {
+                const level = Math.round(cat.score) - 1;
+                const maturityInfo = MATURITY_LEVELS[Math.max(0, Math.min(4, level))];
+                return (
+                  <div key={cat.id} className="p-4 border rounded-lg bg-gray-50">
+                    <h4 className="font-semibold text-gray-800">{cat.title}</h4>
+                    <div className="mt-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm text-gray-600">Score</span>
+                        <span className="font-bold" style={{ color: maturityInfo.color }}>
+                          {cat.score.toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div 
+                          className="h-2 rounded-full transition-all duration-500"
+                          style={{ 
+                            width: `${(cat.score / 5) * 100}%`,
+                            backgroundColor: maturityInfo.color 
+                          }}
+                        ></div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{maturityInfo.name}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Report Actions */}
+          <div className="flex gap-4 justify-center bg-white p-6 rounded-lg shadow-sm">
+            <button 
+              onClick={() => {
+                const csvContent = generateCSVContent(reportData);
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `eraneos-ai-scan-${reportData.metadata.organisation || 'anonymous'}-${reportData.metadata.date}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
+            >
+              📊 Download CSV Report
+            </button>
+            <button 
+              onClick={() => {
+                window.history.replaceState({}, '', window.location.pathname);
+                setView('form');
+                setReportData(null);
+              }}
+              className="px-6 py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90" 
+              style={{ backgroundColor: '#0b6b9a' }}
+            >
+              🔄 Take New Assessment
+            </button>
+          </div>
+
+          {/* Report Footer */}
+          <div className="bg-white p-6 rounded-lg shadow-sm text-center">
+            <p className="text-sm text-gray-500">
+              This report was generated by the Eraneos AI Readiness & Maturity Scan
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Assessment ID: {reportData.id} | Version: {reportData.version}
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
