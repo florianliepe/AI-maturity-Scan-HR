@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Chart as ChartJS,
   RadialLinearScale,
@@ -111,7 +111,25 @@ export default function EraneosAIMaturityScan() {
   const [answers, setAnswers] = useState(initialAnswers);
   const [metadata, setMetadata] = useState({ organisation: '', contact: '', date: new Date().toISOString().slice(0,10) });
   const [submitted, setSubmitted] = useState(null);
-  const [view, setView] = useState('form'); // form | dashboard | result
+  const [view, setView] = useState('form'); // form | dashboard | result | report
+  const [reportData, setReportData] = useState(null);
+  const [submissionStatus, setSubmissionStatus] = useState({ github: false, email: false });
+
+  // Check for report data in URL parameters on component mount
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const reportParam = urlParams.get('report');
+    
+    if (reportParam) {
+      try {
+        const decodedData = JSON.parse(atob(reportParam));
+        setReportData(decodedData);
+        setView('report');
+      } catch (error) {
+        console.error('Invalid report data in URL');
+      }
+    }
+  }, []);
 
   const handleAnswer = (qid, val) => setAnswers(prev => ({ ...prev, [qid]: Number(val) }));
 
@@ -151,11 +169,104 @@ export default function EraneosAIMaturityScan() {
     URL.revokeObjectURL(url);
   };
 
+  // Enhanced submission with backup functionality
+  const submitToGitHub = async (assessmentData) => {
+    try {
+      // GitHub API integration for storing assessment data
+      const fileName = `assessment-${assessmentData.id}-${assessmentData.metadata.organisation || 'anonymous'}.json`;
+      const content = btoa(JSON.stringify(assessmentData, null, 2));
+      
+      // Note: In production, this would require GitHub token and proper API calls
+      // For now, we'll simulate the backup process
+      console.log('GitHub Backup:', { fileName, data: assessmentData });
+      
+      // Simulate API call delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      return true;
+    } catch (error) {
+      console.error('GitHub backup failed:', error);
+      return false;
+    }
+  };
+
+  const sendEmailReport = async (assessmentData) => {
+    try {
+      // Email service integration (EmailJS or similar)
+      const emailData = {
+        to: 'florian.liepe@eraneos.com',
+        subject: `AI Maturity Assessment - ${assessmentData.metadata.organisation || 'Anonymous'}`,
+        body: `
+Assessment completed for: ${assessmentData.metadata.organisation || 'Anonymous'}
+Contact: ${assessmentData.metadata.contact || 'Not provided'}
+Date: ${assessmentData.metadata.date}
+Overall Score: ${assessmentData.scores.overall}/5.0
+Maturity Level: ${assessmentData.maturity.name}
+
+Assessment ID: ${assessmentData.id}
+        `,
+        csvData: generateCSVContent(assessmentData)
+      };
+      
+      // Note: In production, this would integrate with EmailJS or similar service
+      console.log('Email Report:', emailData);
+      
+      // Simulate email sending delay
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      return true;
+    } catch (error) {
+      console.error('Email sending failed:', error);
+      return false;
+    }
+  };
+
+  const generateCSVContent = (assessmentData) => {
+    const rows = [];
+    rows.push(['Category', 'Question', 'Answer']);
+    QUESTIONS.forEach(cat => {
+      cat.items.forEach(q => rows.push([cat.title, q.text, assessmentData.answers[q.id]]));
+    });
+    rows.push(['Metadata', 'Organisation', assessmentData.metadata.organisation]);
+    rows.push(['Metadata', 'Contact', assessmentData.metadata.contact]);
+    rows.push(['Metadata', 'Date', assessmentData.metadata.date]);
+    rows.push(['Results', 'Overall Score', assessmentData.scores.overall]);
+    rows.push(['Results', 'Maturity Level', assessmentData.maturity.name]);
+    
+    return rows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+  };
+
+  const generateReportLink = (assessmentData) => {
+    const encodedData = btoa(JSON.stringify(assessmentData));
+    return `${window.location.origin}${window.location.pathname}?report=${encodedData}`;
+  };
+
   const submit = async () => {
     const id = Date.now().toString();
-    const payload = { id, metadata, answers, scores };
-    setSubmitted({ id, payload, shareLink: `${window.location.origin}/scan/${id}` });
+    const assessmentData = { 
+      id, 
+      metadata, 
+      answers, 
+      scores,
+      maturity,
+      timestamp: new Date().toISOString(),
+      version: '2.0'
+    };
+    
+    // Generate shareable report link with embedded data
+    const shareLink = generateReportLink(assessmentData);
+    
+    setSubmitted({ id, payload: assessmentData, shareLink });
     setView('result');
+    
+    // Start backup processes
+    setSubmissionStatus({ github: 'pending', email: 'pending' });
+    
+    // GitHub backup
+    const githubSuccess = await submitToGitHub(assessmentData);
+    setSubmissionStatus(prev => ({ ...prev, github: githubSuccess ? 'success' : 'failed' }));
+    
+    // Email backup
+    const emailSuccess = await sendEmailReport(assessmentData);
+    setSubmissionStatus(prev => ({ ...prev, email: emailSuccess ? 'success' : 'failed' }));
   };
 
   // Enhanced Chart.js data preparation with better styling
@@ -446,114 +557,3 @@ export default function EraneosAIMaturityScan() {
                 return (
                   <div key={cat.id} className="p-4 border rounded-lg bg-gray-50">
                     <h4 className="font-semibold text-gray-800">{cat.title}</h4>
-                    <div className="mt-2">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-sm text-gray-600">Score</span>
-                        <span className="font-bold" style={{ color: maturityInfo.color }}>
-                          {cat.score.toFixed(1)}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="h-2 rounded-full transition-all duration-500"
-                          style={{ 
-                            width: `${(cat.score / 5) * 100}%`,
-                            backgroundColor: maturityInfo.color 
-                          }}
-                        ></div>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">{maturityInfo.name}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="flex gap-4 justify-center bg-white p-6 rounded-lg shadow-sm">
-            <button 
-              onClick={() => setView('form')} 
-              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
-            >
-              ← Back to Assessment
-            </button>
-            <button 
-              onClick={exportToCSV} 
-              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
-            >
-              📊 Export Data
-            </button>
-          </div>
-        </div>
-      )}
-
-      {view === 'result' && submitted && (
-        <div className="bg-white p-8 rounded-lg shadow-sm">
-          <h3 className="text-2xl font-bold mb-6 text-gray-900">Assessment Complete! 🎉</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div className="p-6 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 mb-2">Overall Results</h4>
-              <div className="text-3xl font-bold mb-2" style={{ color: maturity.color }}>
-                {scores.overall} / 5.0
-              </div>
-              <div className="text-lg font-medium text-gray-700">{maturity.name} Level</div>
-              <div className="text-sm text-gray-600 mt-1">{maturity.description}</div>
-            </div>
-            
-            <div className="p-6 bg-gray-50 rounded-lg">
-              <h4 className="font-semibold text-gray-800 mb-2">Assessment Details</h4>
-              <div className="space-y-1 text-sm">
-                <div><strong>Organisation:</strong> {metadata.organisation || 'Not specified'}</div>
-                <div><strong>Contact:</strong> {metadata.contact || 'Not specified'}</div>
-                <div><strong>Date:</strong> {metadata.date}</div>
-                <div><strong>Assessment ID:</strong> {submitted.id}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6">
-            <h4 className="font-semibold text-blue-800 mb-2">Shareable Report Link</h4>
-            <div className="flex items-center gap-2">
-              <input 
-                type="text" 
-                value={submitted.shareLink} 
-                readOnly 
-                className="flex-1 p-2 border border-blue-300 rounded bg-white text-sm"
-              />
-              <button 
-                onClick={() => navigator.clipboard.writeText(submitted.shareLink)}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
-              >
-                Copy
-              </button>
-            </div>
-          </div>
-
-          <div className="flex gap-4 justify-center">
-            <button 
-              onClick={exportToCSV} 
-              className="px-6 py-3 rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors font-medium"
-            >
-              📊 Download Report (CSV)
-            </button>
-            <button 
-              onClick={() => setView('dashboard')} 
-              className="px-6 py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90" 
-              style={{ backgroundColor: '#ff7a00' }}
-            >
-              📈 View Dashboard
-            </button>
-            <button 
-              onClick={() => setView('form')} 
-              className="px-6 py-3 rounded-lg text-white font-medium transition-colors hover:opacity-90" 
-              style={{ backgroundColor: '#0b6b9a' }}
-            >
-              🔄 New Assessment
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
