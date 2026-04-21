@@ -305,10 +305,10 @@ export default function EraneosAIMaturityScan() {
   });
   const [loading, setLoading] = useState(false);
   
-  const[isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [showAdminLogin, setShowAdminLogin] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const[showAdminLogin, setShowAdminLogin] = useState(false);
   const [adminPassword, setAdminPassword] = useState('');
-  const[adminLoginError, setAdminLoginError] = useState('');
+  const [adminLoginError, setAdminLoginError] = useState('');
   
   const githubService = useMemo(() => new GitHubService(),[]);
 
@@ -376,20 +376,7 @@ export default function EraneosAIMaturityScan() {
   const maturity = MATURITY_LEVELS[levelIndex];
 
   const exportToCSV = () => {
-    const rows = [];
-    rows.push(['Dimension', 'Subdimension', 'Answer (1-5)']);
-    DIMENSIONS.forEach(cat => {
-      cat.items.forEach(q => rows.push([cat.title, q.title, answers[q.id]]));
-    });
-    rows.push([]);
-    rows.push(['Metadata', 'Organisation', metadata.organisation]);
-    rows.push(['Metadata', 'Contact', metadata.contact]);
-    rows.push(['Metadata', 'Date', metadata.date]);
-    rows.push(['Results', 'Total Score', `${scores.total} / ${scores.max}`]);
-    rows.push(['Results', 'Percentage', `${scores.percentage}%`]);
-    rows.push(['Results', 'Maturity Level', maturity.name]);
-    
-    const csvContent = rows.map(row => row.map(cell => `"${cell || ''}"`).join(',')).join('\n');
+    const csvContent = generateCSVContent({ metadata, answers, scores, maturity });
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -403,14 +390,20 @@ export default function EraneosAIMaturityScan() {
     const rows = [];
     rows.push(['Dimension', 'Subdimension', 'Answer (1-5)']);
     DIMENSIONS.forEach(cat => {
-      cat.items.forEach(q => rows.push([cat.title, q.title, assessmentData.answers[q.id]]));
+      cat.items.forEach(q => rows.push([cat.title, q.title, assessmentData.answers[q.id] || 0]));
     });
     rows.push([]);
     rows.push(['Metadata', 'Organisation', assessmentData.metadata.organisation]);
     rows.push(['Metadata', 'Contact', assessmentData.metadata.contact]);
     rows.push(['Metadata', 'Date', assessmentData.metadata.date]);
-    rows.push(['Results', 'Total Score', `${assessmentData.scores.total} / ${assessmentData.scores.max}`]);
-    rows.push(['Results', 'Percentage', `${assessmentData.scores.percentage}%`]);
+    
+    // Safety check for old vs new reports
+    const totalText = assessmentData.scores.total ? `${assessmentData.scores.total} / ${assessmentData.scores.max}` : 'N/A (Old Format)';
+    const pctText = assessmentData.scores.percentage ? `${assessmentData.scores.percentage}%` : 'N/A (Old Format)';
+    
+    rows.push(['Results', 'Total Score', totalText]);
+    rows.push(['Results', 'Percentage', pctText]);
+    rows.push(['Results', '1-5 Average', assessmentData.scores.overall]);
     rows.push(['Results', 'Maturity Level', assessmentData.maturity.name]);
     
     return rows.map(row => row.map(cell => `"${cell || ''}"`).join(',')).join('\n');
@@ -506,6 +499,7 @@ export default function EraneosAIMaturityScan() {
   };
 
   const handleAdminLogin = () => { setShowAdminLogin(true); setAdminLoginError(''); setAdminPassword(''); };
+  
   const handleAdminPasswordSubmit = (e) => {
     e.preventDefault();
     const correctPassword = import.meta.env.VITE_ADMIN_PASSWORD || 'eraneos2024';
@@ -515,6 +509,7 @@ export default function EraneosAIMaturityScan() {
       setAdminLoginError('Incorrect password. Please try again.');
     }
   };
+  
   const handleAdminLogout = () => {
     setIsAdminAuthenticated(false); sessionStorage.removeItem('adminAuthenticated'); if (view === 'admin') setView('form');
   };
@@ -558,12 +553,12 @@ export default function EraneosAIMaturityScan() {
     setSubmissionStatus(prev => ({ ...prev, email: emailSuccess ? 'success' : 'failed' }));
   };
 
-  const radarData = {
-    labels: scores.categories.map(c => c.title.replace(' & ', '\n& ')),
+  const getRadarData = (sourceScores) => ({
+    labels: sourceScores.categories.map(c => c.title.replace(' & ', '\n& ')),
     datasets:[
       {
         label: 'Current Maturity',
-        data: scores.categories.map(c => c.score),
+        data: sourceScores.categories.map(c => c.score),
         backgroundColor: 'rgba(11, 107, 154, 0.15)',
         borderColor: '#0b6b9a',
         borderWidth: 3,
@@ -574,7 +569,7 @@ export default function EraneosAIMaturityScan() {
       },
       {
         label: 'Target (AI First)',
-        data: new Array(5).fill(5), // Updated target to level 5
+        data: new Array(sourceScores.categories.length).fill(5), // Dynamically fill to handle old (6) vs new (5) data lengths
         backgroundColor: 'rgba(255, 122, 0, 0.05)',
         borderColor: '#ff7a00',
         borderWidth: 2,
@@ -584,7 +579,7 @@ export default function EraneosAIMaturityScan() {
         pointRadius: 0,
       },
     ],
-  };
+  });
 
   const radarOptions = {
     responsive: true, maintainAspectRatio: false,
@@ -602,16 +597,16 @@ export default function EraneosAIMaturityScan() {
     },
   };
 
-  const barData = {
-    labels: scores.categories.map(c => c.title.split(' ')[0]),
+  const getBarData = (sourceScores) => ({
+    labels: sourceScores.categories.map(c => c.title.split(' ')[0]),
     datasets:[{
       label: 'Current Score',
-      data: scores.categories.map(c => c.score),
-      backgroundColor: scores.categories.map(c => MATURITY_LEVELS[Math.max(0, Math.min(4, Math.round(c.score) - 1))].color + '80'),
-      borderColor: scores.categories.map(c => MATURITY_LEVELS[Math.max(0, Math.min(4, Math.round(c.score) - 1))].color),
+      data: sourceScores.categories.map(c => c.score),
+      backgroundColor: sourceScores.categories.map(c => MATURITY_LEVELS[Math.max(0, Math.min(4, Math.round(c.score) - 1))].color + '80'),
+      borderColor: sourceScores.categories.map(c => MATURITY_LEVELS[Math.max(0, Math.min(4, Math.round(c.score) - 1))].color),
       borderWidth: 2, borderRadius: 4,
     }],
-  };
+  });
 
   const barOptions = {
     responsive: true, maintainAspectRatio: false,
@@ -621,6 +616,7 @@ export default function EraneosAIMaturityScan() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-gray-50 min-h-screen">
+      {/* Header Section */}
       <header className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 bg-white p-6 rounded-lg shadow-sm relative gap-4">
         <div className="flex items-center gap-4">
           <div className={`w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl ${ERANEOS_COLORS.brand}`}>E</div>
@@ -651,6 +647,7 @@ export default function EraneosAIMaturityScan() {
         </div>
       </header>
 
+      {/* Admin Login Modal */}
       {showAdminLogin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
@@ -658,9 +655,9 @@ export default function EraneosAIMaturityScan() {
             <form onSubmit={handleAdminPasswordSubmit}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="w-full p-3 border rounded-lg" autoFocus />
+                <input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500" autoFocus />
               </div>
-              {adminLoginError && <div className="mb-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">{adminLoginError}</div>}
+              {adminLoginError && <div className="mb-4 p-3 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm">{adminLoginError}</div>}
               <div className="flex gap-3 justify-end">
                 <button type="button" onClick={() => setShowAdminLogin(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Login</button>
@@ -670,6 +667,7 @@ export default function EraneosAIMaturityScan() {
         </div>
       )}
 
+      {/* Form View */}
       {view === 'form' && (
         <div className="space-y-6">
           <section className="bg-white p-6 rounded-lg shadow-sm">
@@ -700,7 +698,6 @@ export default function EraneosAIMaturityScan() {
                   <div key={q.id} className="pb-6 border-b border-gray-100 last:border-0 last:pb-0">
                     <h4 className="font-bold text-lg text-gray-800 mb-4">{q.title}</h4>
                     
-                    {/* The 5-Level Selection Grid */}
                     <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
                       {[1, 2, 3, 4, 5].map(v => {
                          const isSelected = answers[q.id] === v;
@@ -723,7 +720,6 @@ export default function EraneosAIMaturityScan() {
                       })}
                     </div>
                     
-                    {/* KPI / Messgrößen Info Box */}
                     {q.messgroessen && (
                       <div className="mt-4 bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-700 flex gap-3 items-start">
                         <div className="mt-0.5 text-slate-400">📊</div>
@@ -747,6 +743,7 @@ export default function EraneosAIMaturityScan() {
         </div>
       )}
 
+      {/* Dashboard View */}
       {view === 'dashboard' && (
         <div className="space-y-6">
           <div className="bg-white p-6 rounded-lg shadow-sm">
@@ -754,11 +751,11 @@ export default function EraneosAIMaturityScan() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-gray-50 p-6 rounded-lg">
                 <h4 className="text-lg font-semibold mb-4 text-gray-800">Maturity Radar Chart</h4>
-                <div className="h-80"><Radar data={radarData} options={radarOptions} /></div>
+                <div className="h-80"><Radar data={getRadarData(scores)} options={radarOptions} /></div>
               </div>
               <div className="bg-gray-50 p-6 rounded-lg">
                 <h4 className="text-lg font-semibold mb-4 text-gray-800">Category Averages (1-5)</h4>
-                <div className="h-80"><Bar data={barData} options={barOptions} /></div>
+                <div className="h-80"><Bar data={getBarData(scores)} options={barOptions} /></div>
               </div>
             </div>
           </div>
@@ -795,6 +792,7 @@ export default function EraneosAIMaturityScan() {
         </div>
       )}
 
+      {/* Result View */}
       {view === 'result' && submitted && (
         <div className="bg-white p-8 rounded-lg shadow-sm">
           <h3 className="text-2xl font-bold mb-6 text-gray-900">Assessment Complete! 🎉</h3>
@@ -816,6 +814,42 @@ export default function EraneosAIMaturityScan() {
               </div>
             </div>
           </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6">
+            <h4 className="font-semibold text-blue-800 mb-2">Shareable Report Link</h4>
+            <div className="flex items-center gap-2">
+              <input type="text" value={submitted.shareLink} readOnly className="flex-1 p-2 border border-blue-300 rounded bg-white text-sm" />
+              <button onClick={() => navigator.clipboard.writeText(submitted.shareLink)} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">Copy</button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div className="p-4 bg-gray-50 border rounded-lg">
+              <h4 className="font-semibold text-gray-800 mb-2">📁 Data Storage</h4>
+              <div className="space-y-2">
+                {submissionStatus.github === 'pending' && (
+                  <div className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div><span className="text-sm text-blue-600">Processing...</span></div>
+                )}
+                {submissionStatus.github === 'success' && submissionStatus.githubDetails && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2"><div className="w-4 h-4 bg-green-500 rounded-full"></div><span className="text-sm text-green-600 font-medium">{submissionStatus.githubDetails.storage === 'github' ? 'GitHub Repository' : 'Local Storage'}</span></div>
+                    <div className="text-xs text-gray-600 ml-6">{submissionStatus.githubDetails.message}</div>
+                  </div>
+                )}
+                {submissionStatus.github === 'failed' && (
+                  <div className="flex items-center gap-2"><div className="w-4 h-4 bg-red-500 rounded-full"></div><span className="text-sm text-red-600 font-medium">Storage Failed</span></div>
+                )}
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 border rounded-lg">
+              <h4 className="font-semibold text-gray-800 mb-2">📧 Email Report</h4>
+              <div className="flex items-center gap-2">
+                {submissionStatus.email === 'pending' && <><div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div><span className="text-sm text-blue-600">Sending...</span></>}
+                {submissionStatus.email === 'success' && <><div className="w-4 h-4 bg-green-500 rounded-full"></div><span className="text-sm text-green-600">Sent successfully</span></>}
+                {submissionStatus.email === 'failed' && <><div className="w-4 h-4 bg-red-500 rounded-full"></div><span className="text-sm text-red-600">Sending failed</span></>}
+              </div>
+            </div>
+          </div>
           
           <div className="flex gap-4 justify-center">
             <button onClick={exportToCSV} className="px-6 py-3 rounded-lg border hover:bg-gray-50 transition-colors font-medium">📊 Download CSV</button>
@@ -825,23 +859,226 @@ export default function EraneosAIMaturityScan() {
         </div>
       )}
       
-      {/* Report and Admin Views essentially follow the existing dashboard patterns... omitted for brevity if unchanged, but I provide FULL code! */}
+      {/* Report View (Loaded via URL parameter) */}
       {view === 'report' && reportData && (
-         <div className="bg-white p-8 rounded-lg shadow-sm">
-           <h3 className="text-2xl font-bold text-gray-900 mb-4">Report for {reportData.metadata.organisation}</h3>
-           <p>Completed on {reportData.metadata.date}. Total Score: {reportData.scores.total}/{reportData.scores.max} ({reportData.scores.percentage}%) - {reportData.maturity.name}</p>
-           <button onClick={() => setView('form')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded">Back to Start</button>
-         </div>
+        <div className="space-y-6">
+          <div className="bg-white p-8 rounded-lg shadow-sm">
+            <div className="text-center mb-6">
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">AI Maturity Assessment Report</h2>
+              <p className="text-gray-600">Generated on {new Date(reportData.timestamp).toLocaleDateString()}</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Organisation</h3>
+                <p className="text-lg">{reportData.metadata.organisation || 'Anonymous'}</p>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Overall Score</h3>
+                <p className="text-3xl font-bold" style={{ color: reportData.maturity.color }}>
+                  {reportData.scores.percentage ? `${reportData.scores.percentage}%` : `${reportData.scores.overall}/5.0`}
+                </p>
+                {reportData.scores.total && (
+                  <p className="text-sm text-gray-500 mt-1">{reportData.scores.total} / {reportData.scores.max} pts</p>
+                )}
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-semibold text-gray-800">Maturity Level</h3>
+                <p className="text-lg font-semibold" style={{ color: reportData.maturity.color }}>{reportData.maturity.name}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h3 className="text-2xl font-bold mb-6 text-gray-900">Assessment Visualization</h3>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h4 className="text-lg font-semibold mb-4 text-gray-800">Maturity Radar Chart</h4>
+                <div className="h-80"><Radar data={getRadarData(reportData.scores)} options={radarOptions} /></div>
+              </div>
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h4 className="text-lg font-semibold mb-4 text-gray-800">Category Scores</h4>
+                <div className="h-80"><Bar data={getBarData(reportData.scores)} options={barOptions} /></div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h3 className="text-xl font-semibold mb-4 text-gray-900">Detailed Category Analysis</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {reportData.scores.categories.map(cat => {
+                const level = Math.max(0, Math.min(4, Math.round(cat.score) - 1));
+                const maturityInfo = MATURITY_LEVELS[level];
+                return (
+                  <div key={cat.id} className="p-4 border rounded-lg bg-gray-50">
+                    <h4 className="font-semibold text-gray-800">{cat.title}</h4>
+                    <div className="mt-2">
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-sm text-gray-600">{cat.total ? `Points: ${cat.total} | ` : ''}Score</span>
+                        <span className="font-bold" style={{ color: maturityInfo.color }}>{cat.score.toFixed(1)}</span>
+                      </div>
+                      <div className="w-full bg-gray-200 rounded-full h-2">
+                        <div className="h-2 rounded-full transition-all" style={{ width: `${(cat.score / 5) * 100}%`, backgroundColor: maturityInfo.color }}></div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">{maturityInfo.name}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex gap-4 justify-center bg-white p-6 rounded-lg shadow-sm">
+            <button 
+              onClick={() => {
+                const csvContent = generateCSVContent(reportData);
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                a.download = `eraneos-report-${reportData.metadata.organisation || 'anonymous'}-${reportData.metadata.date}.csv`;
+                a.click(); URL.revokeObjectURL(url);
+              }}
+              className="px-6 py-3 rounded-lg border hover:bg-gray-50 font-medium"
+            >
+              📊 Download CSV
+            </button>
+            <button 
+              onClick={() => { window.history.replaceState({}, '', window.location.pathname); setView('form'); setReportData(null); }}
+              className="px-6 py-3 rounded-lg text-white font-medium bg-[#0b6b9a] hover:opacity-90"
+            >
+              🔄 Take New Assessment
+            </button>
+          </div>
+        </div>
       )}
 
+      {/* Admin View */}
       {view === 'admin' && (
-         <div className="bg-white p-6 rounded-lg shadow-sm">
-           <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Admin Dashboard</h2>
-              <button onClick={() => setView('form')} className="px-4 py-2 border rounded hover:bg-gray-50">← Back</button>
-           </div>
-           <p className="text-gray-600">Admin functionality requires active GitHub integration to view stored data.</p>
-         </div>
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">Assessment Analytics Dashboard</h2>
+              <div className="flex gap-2">
+                <button onClick={loadAllAssessments} disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                  {loading ? '🔄 Loading...' : '🔄 Refresh Data'}
+                </button>
+                <button onClick={() => setView('form')} className="px-4 py-2 border rounded hover:bg-gray-50">← Back</button>
+              </div>
+            </div>
+
+            {analytics && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <h3 className="font-semibold text-blue-800">Total Assessments</h3>
+                  <p className="text-2xl font-bold text-blue-900">{analytics.totalAssessments}</p>
+                </div>
+                <div className="p-4 bg-green-50 rounded-lg">
+                  <h3 className="font-semibold text-green-800">Average Score</h3>
+                  <p className="text-2xl font-bold text-green-900">{analytics.averageScore}/5.0</p>
+                </div>
+                <div className="p-4 bg-orange-50 rounded-lg">
+                  <h3 className="font-semibold text-orange-800">Recent (30 days)</h3>
+                  <p className="text-2xl font-bold text-orange-900">{analytics.recentAssessments}</p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg">
+                  <h3 className="font-semibold text-purple-800">GitHub Integration</h3>
+                  <p className="text-sm font-bold text-purple-900">{githubService.isAvailable() ? '✅ Active' : '❌ Not Configured'}</p>
+                </div>
+              </div>
+            )}
+
+            {analytics && (
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <h3 className="text-lg font-semibold mb-4 text-gray-800">Maturity Level Distribution</h3>
+                <div className="h-64">
+                  <Bar 
+                    data={{
+                      labels: Object.keys(analytics.maturityDistribution),
+                      datasets:[{
+                        label: 'Assessments',
+                        data: Object.values(analytics.maturityDistribution),
+                        backgroundColor: MATURITY_LEVELS.map(l => l.color + '80'),
+                        borderColor: MATURITY_LEVELS.map(l => l.color),
+                        borderWidth: 2, borderRadius: 4,
+                      }]
+                    }}
+                    options={{ responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }, plugins: { legend: { display: false } } }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white p-6 rounded-lg shadow-sm">
+            <h3 className="text-lg font-semibold mb-4 text-gray-800">Filter & Export</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+              <input type="date" placeholder="From Date" value={filters.dateFrom} onChange={e => setFilters(p => ({ ...p, dateFrom: e.target.value }))} className="p-2 border rounded" />
+              <input type="date" placeholder="To Date" value={filters.dateTo} onChange={e => setFilters(p => ({ ...p, dateTo: e.target.value }))} className="p-2 border rounded" />
+              <input type="text" placeholder="Organisation" value={filters.organisation} onChange={e => setFilters(p => ({ ...p, organisation: e.target.value }))} className="p-2 border rounded" />
+              <select value={filters.maturityLevel} onChange={e => setFilters(p => ({ ...p, maturityLevel: e.target.value }))} className="p-2 border rounded">
+                <option value="">All Levels</option>
+                {MATURITY_LEVELS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+              </select>
+              <input type="number" placeholder="Min Score (1-5)" step="0.1" min="1" max="5" value={filters.scoreMin} onChange={e => setFilters(p => ({ ...p, scoreMin: e.target.value }))} className="p-2 border rounded" />
+              <input type="number" placeholder="Max Score (1-5)" step="0.1" min="1" max="5" value={filters.scoreMax} onChange={e => setFilters(p => ({ ...p, scoreMax: e.target.value }))} className="p-2 border rounded" />
+            </div>
+            
+            <div className="flex justify-between items-center bg-gray-50 p-4 rounded-lg">
+              <div className="flex gap-2">
+                <button onClick={() => setSelectedAssessments(selectedAssessments.length === filteredAssessments.length ?[] : filteredAssessments.map(a => a.id))} className="px-4 py-2 border rounded hover:bg-gray-100 text-sm bg-white">
+                  {selectedAssessments.length === filteredAssessments.length ? 'Deselect All' : 'Select All'}
+                </button>
+                <button onClick={() => handleBulkExport('csv')} disabled={selectedAssessments.length === 0 || loading} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 text-sm">
+                  📊 Export CSV ({selectedAssessments.length})
+                </button>
+                <button onClick={() => handleBulkExport('json')} disabled={selectedAssessments.length === 0 || loading} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 text-sm">
+                  📄 Export JSON ({selectedAssessments.length})
+                </button>
+              </div>
+              <span className="text-sm text-gray-600">Showing {filteredAssessments.length} of {allAssessments.length}</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b">
+                  <tr>
+                    <th className="p-4 text-left"><input type="checkbox" checked={selectedAssessments.length === filteredAssessments.length && filteredAssessments.length > 0} onChange={() => setSelectedAssessments(selectedAssessments.length === filteredAssessments.length ?[] : filteredAssessments.map(a => a.id))} /></th>
+                    <th className="p-4 text-left font-semibold text-gray-800">Organisation</th>
+                    <th className="p-4 text-left font-semibold text-gray-800">Date</th>
+                    <th className="p-4 text-left font-semibold text-gray-800">1-5 Score</th>
+                    <th className="p-4 text-left font-semibold text-gray-800">Maturity</th>
+                    <th className="p-4 text-left font-semibold text-gray-800">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredAssessments.map((assessment, i) => {
+                    const mColor = MATURITY_LEVELS.find(l => l.name === assessment.maturityLevel)?.color || '#6b7280';
+                    return (
+                      <tr key={assessment.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                        <td className="p-4"><input type="checkbox" checked={selectedAssessments.includes(assessment.id)} onChange={() => setSelectedAssessments(p => p.includes(assessment.id) ? p.filter(id => id !== assessment.id) : [...p, assessment.id])} /></td>
+                        <td className="p-4 font-medium text-gray-900">{assessment.organisation}</td>
+                        <td className="p-4 text-gray-600">{new Date(assessment.date).toLocaleDateString()}</td>
+                        <td className="p-4 font-bold" style={{ color: mColor }}>{assessment.overallScore.toFixed(1)}</td>
+                        <td className="p-4"><span className="px-2 py-1 rounded-full text-xs font-medium text-white" style={{ backgroundColor: mColor }}>{assessment.maturityLevel}</span></td>
+                        <td className="p-4">
+                          <div className="flex gap-2">
+                            <button onClick={async () => { const r = await githubService.getAssessment(assessment.filePath); if (r.success) { setReportData(r.data); setView('report'); } }} className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700">View</button>
+                            <button onClick={() => handleDeleteAssessment(assessment)} className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700">Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {filteredAssessments.length === 0 && !loading && (
+              <div className="p-8 text-center text-gray-500">{allAssessments.length === 0 ? 'No assessments found. Click Refresh Data.' : 'No assessments match filters.'}</div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
